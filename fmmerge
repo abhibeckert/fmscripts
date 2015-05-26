@@ -4,9 +4,16 @@
 # Wrapper script to use FileMerge as a merge-tool-cmd in Subversion
 #
 
-FM="$(readlink $(which filemerge))"
+FM="$(which filemerge)"
 FMDIFF="$(basename $0)"
 GN="/usr/local/bin/growlnotify"
+
+# Resolve symlinks leading to FileMerge
+while [ -L "$FM" ]; do
+	FM_DIR="$(dirname "$FM")"
+	FM="$(readlink "$FM")"
+	[[ $FM == /* ]] || FM="$FM_DIR/$FM"
+done
 
 while [ $# != 0 ]; do
 	case $1 in
@@ -23,6 +30,8 @@ while [ $# != 0 ]; do
 				rightfile="$1"
 			elif [ -z "$mergefile" ]; then
 				mergefile="$1"
+			elif [ -z "$wcpath" ]; then
+				wcpath="$1"
 			else
 				echo "Too many files to start merge" 1>&2
 				exit 2
@@ -41,6 +50,14 @@ echo Starting FileMerge... 1>&2
 [ -x "$GN" ] && "$GN" -a FileMerge -n "$FMDIFF" -m "$mergefile" "Starting FileMerge"
 
 [[ "$mergefile" == */* ]] || mergefile="./$mergefile"
-exec "$FM" -left "$leftfile" -right "$rightfile" \
+tempfile=`mktemp -t $FMDIFF`
+"$FM" -left "$leftfile" -right "$rightfile" \
 	-ancestor "$ancestorfile" -merge "$mergefile"
 
+if [ "$mergefile" -nt "$tempfile" ]; then
+	rm "$tempfile"
+	exit 0
+else
+	rm "$tempfile"
+	exit 1
+fi
